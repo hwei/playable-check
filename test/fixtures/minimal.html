@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>playable-check minimal fixture</title>
+</head>
+<body>
+<button id="cta">Install</button>
+<script>
+if (window.gameReady) window.gameReady();
+window.gameStart = function () {};
+window.gameClose = function () {};
+window.__qa = {
+  popAll: function () { return 0; },
+  clickCTA: function () { document.getElementById('cta').click(); },
+  state: function () { return { playing: false, score: 1, target: 1 }; }
+};
+document.getElementById('cta').addEventListener('click', function () {
+  if (window.install) window.install();
+});
+setTimeout(function () { if (window.gameEnd) window.gameEnd(); }, 500);
+</script>
+</body>
+</html>
