@@ -1,0 +1,17 @@
+name: self-check
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build fixture zip from test/fixtures/minimal.html
+        run: |
+          rm -rf /tmp/fx && mkdir -p /tmp/fx/fixture
+          cp test/fixtures/minimal.html /tmp/fx/fixture/fixture.html
+          cd /tmp/fx && zip -qr fixture.zip fixture
+          cp /tmp/fx/fixture.zip "$GITHUB_WORKSPACE/fixture.zip"
+          unzip -l "$GITHUB_WORKSPACE/fixture.zip"
+      - uses: ./
+        with:
+          zip: fixture.zip
