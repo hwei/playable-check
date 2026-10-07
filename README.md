@@ -12,7 +12,9 @@ run on every push:
 
 - **Static checks** — zip size ≤ 5MB, naming rules (`zip == folder == html`,
   `[A-Za-z0-9_]`), single HTML, no external network requests, `charset`/`viewport`
-  metas, no `console` override, no auto-redirect, CTA method present.
+  metas, no `console` override, no auto-redirect, CTA method present,
+  plus IAB MRAID 3.0 best practices when MRAID is used (no `<a href>` hyperlinks,
+  MRAID calls gated behind a ready listener).
 - **Dynamic checks (headless Chromium)** — simulates the ad container: asserts
   `gameReady()` on load, drives `gameStart()` → auto-play to completion → asserts
   `gameEnd()`, clicks the real CTA button and asserts `install()` fires **only**
