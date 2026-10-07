@@ -123,6 +123,29 @@ function runStaticChecks(zipPath) {
 
     push('cta-method', 'CTA method present (install / mraid.open)',
       /install\s*\(|mraid\.open\s*\(/.test(code) ? 'pass' : 'warn', '');
+
+    // --- MRAID 3.0 best-practice checks (IAB MRAID 3.0 Best Practices Guide) ---
+    // Only active when the creative actually uses MRAID; Mintegral-style
+    // packages (no mraid usage) are unaffected.
+    const usesMraid = /\bmraid\./.test(code);
+
+    // IAB: hyperlinks must not be used with MRAID ads; always mraid.open().
+    const linkHits = [...code.matchAll(/<a\b[^>]*\bhref\s*=\s*["']https?:[^"']*["'][^>]*>/gi)]
+      .map((m) => m[0].slice(0, 60));
+    push('mraid-no-hyperlink', 'No hyperlinks when MRAID is used (use mraid.open())',
+      !usesMraid ? 'pass' : (linkHits.length ? 'fail' : 'pass'),
+      linkHits.length ? linkHits.join(' | ')
+        : (usesMraid ? 'mraid used, no <a href=http>' : 'mraid not used'));
+
+    // IAB: creative must add an MRAID ready event listener before calling MRAID APIs.
+    const hasReadyGate = /addEventListener\s*\(\s*["']ready["']/.test(code)
+      || /\bmraid\.getState\s*\(\s*\)/.test(code)
+      || /function\s+\w*[Rr]eady\w*\s*\(/.test(code);
+    const mraidCalls = (code.match(/\bmraid\.[a-zA-Z]+\s*\(/g) || []).length;
+    push('mraid-ready-gate', 'MRAID calls gated behind ready listener',
+      !usesMraid ? 'pass' : (hasReadyGate ? 'pass' : 'warn'),
+      mraidCalls + ' mraid.*() call(s)'
+        + (hasReadyGate ? ', ready gate found' : ', no ready gate found'));
   }
 
   return done(htmlRelPath);
