@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vungle-good fixture</title>
+</head>
+<body>
+<button id="cta">Play now</button>
+<script>
+// Synthetic Vungle-profile fixture: flat layout, entry index.html/ad.html,
+// CTA via mraid.open, end-of-experience via complete postMessage + gameEnd().
+// MRAID calls are gated behind the ready event, per IAB MRAID 3.0 practice.
+function gameEnd() {}
+function onMraidReady() {
+  document.getElementById('cta').addEventListener('click', function () {
+    if (window.mraid && mraid.open) { mraid.open('https://example.com/store'); }
+    parent.postMessage('complete', '*');
+    gameEnd();
+  });
+}
+if (window.mraid) {
+  if (mraid.getState() === 'loading') {
+    mraid.addEventListener('ready', onMraidReady);
+  } else {
+    onMraidReady();
+  }
+} else {
+  onMraidReady();
+}
+</script>
+</body>
+</html>

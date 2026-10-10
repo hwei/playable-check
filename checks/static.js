@@ -20,7 +20,8 @@ function stripComments(html) {
   return html.replace(/<!--[\s\S]*?-->/g, '');
 }
 
-function runStaticChecks(zipPath) {
+function runStaticChecks(zipPath, opts = {}) {
+  const profile = opts.profile || null;
   const checks = [];
   const push = (id, name, status, detail) =>
     checks.push({ id, name, status, detail: detail || '' });
@@ -56,13 +57,23 @@ function runStaticChecks(zipPath) {
 
   const tops = [...new Set(entries.map((n) => n.split('/')[0]))];
   const singleFolder = tops.length === 1 && entries.every((n) => n.includes('/'));
-  push('folder-name', 'Single top-level folder, name == zip name',
-    singleFolder && tops[0] === base ? 'pass' : 'fail',
-    tops.join(', ') || '(none)');
+  if (profile === 'vungle') {
+    // Mintegral's zip==folder==html layout does not bind Vungle; flat root or
+    // a single wrapper folder are both plausible, flatness itself is warned
+    // separately by vungle-flat-layout.
+    push('folder-name', 'Single top-level folder, name == zip name',
+      'pass', 'relaxed under vungle profile (' + (tops.join(', ') || 'none') + ')');
+  } else {
+    push('folder-name', 'Single top-level folder, name == zip name',
+      singleFolder && tops[0] === base ? 'pass' : 'fail',
+      tops.join(', ') || '(none)');
+  }
 
   const htmls = entries.filter((n) => n.toLowerCase().endsWith('.html'));
-  const htmlOk = htmls.length === 1 && path.basename(htmls[0], '.html') === base;
-  push('single-html', 'Exactly one HTML, name == zip name',
+  const htmlOk = profile === 'vungle'
+    ? htmls.length === 1
+    : (htmls.length === 1 && path.basename(htmls[0], '.html') === base);
+  push('single-html', profile === 'vungle' ? 'Exactly one HTML (name checked by vungle-entry-name)' : 'Exactly one HTML, name == zip name',
     htmlOk ? 'pass' : 'fail', htmls.join(', ') || '(none)');
 
   const others = entries.filter((n) => !n.toLowerCase().endsWith('.html'));
@@ -118,8 +129,13 @@ function runStaticChecks(zipPath) {
     const rhits = redirRes
       .map((re) => { const m = code.match(re); return m ? m[0].slice(0, 48) : null; })
       .filter(Boolean);
+    // Vungle profile allows window.open as a click path (Help Center guidance);
+    // static analysis cannot prove handler placement, so downgrade that hit.
+    const vungleOpenOnly = profile === 'vungle' && rhits.length === 1 && /window\.open/.test(rhits[0]);
     push('no-auto-redirect', 'No auto-redirect outside click path',
-      rhits.length ? 'fail' : 'pass', rhits.length ? rhits.join(' | ') : 'none found');
+      vungleOpenOnly ? 'warn' : (rhits.length ? 'fail' : 'pass'),
+      vungleOpenOnly ? 'window.open found — allowed under vungle, click-handler placement unverified statically'
+        : (rhits.length ? rhits.join(' | ') : 'none found'));
 
     push('cta-method', 'CTA method present (install / mraid.open)',
       /install\s*\(|mraid\.open\s*\(/.test(code) ? 'pass' : 'warn', '');
@@ -146,6 +162,57 @@ function runStaticChecks(zipPath) {
       !usesMraid ? 'pass' : (hasReadyGate ? 'pass' : 'warn'),
       mraidCalls + ' mraid.*() call(s)'
         + (hasReadyGate ? ', ready gate found' : ', no ready gate found'));
+
+    if (profile === 'vungle') {
+      // Sources (full pages read 2026-10-09): Unity Playworks Vungle page;
+      // Vungle Help Center HTML/MRAID submission guidelines; Vungle Adaptive
+      // Creative dos-and-don'ts (2023-11-24). Adaptive-only items stay warn
+      // until a real Vungle submission confirms their scope.
+      const entryBase = htmls.length ? path.basename(htmls[0]).toLowerCase() : '';
+      push('vungle-entry-name', 'Entry HTML is ad.html or index.html',
+        (entryBase === 'ad.html' || entryBase === 'index.html') ? 'pass' : 'fail',
+        entryBase || '(none)');
+
+      const nested = entries.filter((n) => n.includes('/'));
+      push('vungle-flat-layout', 'All files at same level as entry file (no nested dirs)',
+        nested.length ? 'warn' : 'pass',
+        nested.length ? nested.slice(0, 5).join(', ') : 'flat');
+
+      const hasVungleCta = /mraid\.open\s*\(/.test(code)
+        || /window\.open\s*\(/.test(code)
+        || /postMessage\s*\(\s*['"](download|complete)['"]/.test(code);
+      push('vungle-click-api', 'CTA via mraid.open / window.open / download-complete postMessage',
+        hasVungleCta ? 'pass' : 'fail', hasVungleCta ? 'CTA mechanism found' : 'no Vungle CTA mechanism found');
+
+      const hasComplete = /postMessage\s*\(\s*['"]complete['"]/.test(code)
+        || /GameEnded\s*\(/.test(code) || /gameEnd\s*\(/.test(code);
+      push('vungle-complete-event', 'complete / GameEnded end-of-experience event present',
+        hasComplete ? 'pass' : 'warn', hasComplete ? 'found' : 'not found (warn until scope confirmed)');
+
+      const locNav = /location\s*=\s*["']|location\.href\s*=/.test(code);
+      push('vungle-no-location', 'No window.location navigation for clickthrough',
+        locNav ? 'fail' : 'pass', locNav ? 'location navigation found' : 'none found');
+
+      const storeUrls = [...code.matchAll(/(apps\.apple\.com|play\.google\.com)[^"'\s]*/gi)].map((m) => m[0].slice(0, 48));
+      push('vungle-no-direct-store', 'No direct app-store URLs called from HTML',
+        storeUrls.length ? 'warn' : 'pass', storeUrls.length ? storeUrls.join(' | ') : 'none found');
+
+      push('vungle-no-mraid-js', 'No mraid.js script reference',
+        /<script[^>]+src\s*=\s*["'][^"']*mraid\.js/i.test(code) ? 'warn' : 'pass', '');
+
+      push('vungle-no-reload', 'No document.location.reload',
+        /location\.reload\s*\(/.test(code) ? 'warn' : 'pass', '');
+
+      push('vungle-no-vw-vh', 'No vw/vh units in CSS',
+        /\d(?:\.\d+)?(?:vw|vh)\b/.test(code) ? 'warn' : 'pass', '');
+
+      push('vungle-no-custom-close', 'No custom close button (heuristic)',
+        /(id|class)\s*=\s*["'][^"']*(close|✕)[^"']*["']/i.test(code) ? 'warn' : 'pass', '');
+
+      push('vungle-game-ended', 'GameEnded lifecycle signal present (Luna.Unity.LifeCycle.GameEnded / gameEnd)',
+        /GameEnded\s*\(|gameEnd\s*\(/.test(code) ? 'pass' : 'warn',
+        /GameEnded\s*\(|gameEnd\s*\(/.test(code) ? 'found' : 'not found');
+    }
   }
 
   return done(htmlRelPath);

@@ -31,6 +31,14 @@ npx playwright install chromium
 node bin/playable-check.js path/to/sampleA.zip
 ```
 
+Opt-in Vungle/Liftoff profile (adds 12 network-specific static rules and relaxes
+the Mintegral `zip==folder==html` layout rules; Adaptive-Creative-only items
+report as warnings until a real submission confirms their scope):
+
+```bash
+node bin/playable-check.js path/to/creative.zip --profile vungle --skip-dynamic
+```
+
 As a GitHub Action in your creative repo:
 
 ```yaml

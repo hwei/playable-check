@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * playable-check <playable.zip> [--skip-dynamic] [--fail-on-warn]
+ * playable-check <playable.zip> [--skip-dynamic] [--fail-on-warn] [--profile vungle]
  *
  * Static package checks always run. Dynamic checks (headless Chromium)
  * run unless --skip-dynamic is given. Exit 0 on pass, 1 on fail.
+ * --profile vungle adds opt-in Vungle/Liftoff static rules.
  */
 const path = require('path');
 const os = require('os');
@@ -24,17 +25,23 @@ function printSection(title, checks) {
 
 async function main() {
   const args = process.argv.slice(2);
-  const zipArg = args.find((a) => !a.startsWith('--'));
+  const pIdx = args.indexOf('--profile');
+  const profile = pIdx >= 0 ? args[pIdx + 1] : null;
+  const zipArg = args.find((a, i) => !a.startsWith('--') && (pIdx < 0 || i !== pIdx + 1));
   const skipDynamic = args.includes('--skip-dynamic');
   const failOnWarn = args.includes('--fail-on-warn');
+  if (profile && profile !== 'vungle') {
+    console.error('Unknown --profile: ' + profile + ' (supported: vungle)');
+    process.exit(2);
+  }
   if (!zipArg) {
-    console.error('Usage: playable-check <playable.zip> [--skip-dynamic] [--fail-on-warn]');
+    console.error('Usage: playable-check <playable.zip> [--skip-dynamic] [--fail-on-warn] [--profile vungle]');
     process.exit(2);
   }
   const abs = path.resolve(zipArg);
-  console.log('# playable-check  ' + abs + '\n');
+  console.log('# playable-check  ' + abs + (profile ? '  profile=' + profile : '') + '\n');
 
-  const s = runStaticChecks(abs);
+  const s = runStaticChecks(abs, { profile });
   printSection('Static checks', s.checks);
   let failed = s.failed;
   let warned = s.warned;
